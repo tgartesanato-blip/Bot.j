@@ -1,0 +1,30 @@
+const { makeWASocket, useMultiFileAuthState } = require("@adiwajshing/baileys")
+const { spawn } = require("child_process")
+
+async function connect() {
+    const { state, saveCreds } = await useMultiFileAuthState("auth")
+    const sock = makeWASocket({ auth: state })
+
+    sock.ev.on("creds.update", saveCreds)
+
+    sock.ev.on("messages.upsert", async ({ messages }) => {
+        const msg = messages[0]
+        if (!msg.message || !msg.key.remoteJid) return
+
+        const text = msg.message.conversation || msg.message.extendedTextMessage?.text
+        if (!text) return
+
+        console.log("Mensagem recebida:", text)
+
+        // Chama a TH IA (Python)
+        const py = spawn("python", ["../th-ia/th_ia.py"])
+        py.stdin.write(text + "\n")
+        py.stdin.end()
+
+        py.stdout.on("data", (data) => {
+            sock.sendMessage(msg.key.remoteJid, { text: data.toString() })
+        })
+    })
+}
+
+connect()
